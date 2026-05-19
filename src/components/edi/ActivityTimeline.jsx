@@ -16,7 +16,7 @@ export function ActivityTimeline({ logs }) {
 
       <div className="flex-1 space-y-4 overflow-y-auto max-h-[380px] pr-1">
         {logs && logs.length > 0 ? (
-          logs.map((log) => 
+          logs.map((log) => (
             <div
               key={log.id}
               onClick={() => setSelectedLog(log)}
