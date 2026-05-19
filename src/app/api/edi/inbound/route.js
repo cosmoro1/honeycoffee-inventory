@@ -6,20 +6,14 @@ export async function POST(request) {
     const authHeader = request.headers.get("Authorization");
 
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json(
-        { error: "Unauthorized: invalid or missing bearer token" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized: invalid token" }, { status: 401 });
     }
 
     const token = authHeader.split(" ")[1];
     const expectedToken = process.env.MY_INBOUND_TOKEN || "test";
 
     if (token !== expectedToken) {
-      return NextResponse.json(
-        { error: "Unauthorized: invalid or missing bearer token" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized: invalid token" }, { status: 401 });
     }
 
     const rawEdiContent = await request.text();
@@ -48,15 +42,10 @@ export async function POST(request) {
         const segments = line.split("*");
         poNumber = segments[3];
         const ackType = segments[2];
-        if (ackType === "RE") {
-          orderStatus = "Rejected";
-        } else {
-          orderStatus = "Accepted";
-        }
+        orderStatus = ackType === "RE" ? "Rejected" : "Accepted";
       }
     }
 
-    // Fixed Timezone Engine: Safe date offset generation for Asia/Manila (UTC+8)
     const now = new Date();
     const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
     const manilaOffset = 8 * 60 * 60 * 1000; 
@@ -78,48 +67,31 @@ export async function POST(request) {
       } else {
         logMessage = `Purchase order ${poNumber || "N/A"} confirmed by Sermacrops.`;
       }
-      
       if (poNumber && orderStatus) {
-        await pool.query(
-          "UPDATE edi_orders SET status = ?, updated_at = ? WHERE po_number = ?",
-          [orderStatus, mysqlTimestamp, poNumber]
-        );
+        await pool.query("UPDATE edi_orders SET status = ?, updated_at = ? WHERE po_number = ?", [orderStatus, mysqlTimestamp, poNumber]);
       }
     } 
     else if (ediType === "SH" || ediType === "856") {
       logType = "Delivery";
       logMessage = `Sermacrops sent Shipping Notice for Order ${poNumber || "N/A"}. Items are now in transit.`;
-      
       if (poNumber) {
-        await pool.query(
-          "UPDATE edi_orders SET status = 'Shipped', updated_at = ? WHERE po_number = ?",
-          [mysqlTimestamp, poNumber]
-        );
+        await pool.query("UPDATE edi_orders SET status = 'Shipped', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
       }
     } 
     else if (ediType === "IN" || ediType === "810") {
       logType = "Invoice";
       logMessage = `New Supplier Invoice received for Order ${poNumber || "N/A"}. Pending payment review.`;
-      
       if (poNumber) {
-        await pool.query(
-          "UPDATE edi_orders SET status = 'Invoiced', updated_at = ? WHERE po_number = ?",
-          [mysqlTimestamp, poNumber]
-        );
+        await pool.query("UPDATE edi_orders SET status = 'Invoiced', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
       }
     }
 
-    // UPDATED: Now inserts edi_doc_type and raw_payload directly into the database
     await pool.query(
-      "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
-      [logType, poNumber, logMessage, "OK", mysqlTimestamp, ediType, rawEdiContent]
+      "INSERT INTO activity_logs (type, reference, message, status, created_at) VALUES (?, ?, ?, ?, ?)",
+      [logType, poNumber, logMessage, "OK", mysqlTimestamp]
     );
 
-    return NextResponse.json({
-      success: true,
-      message: `Inbound EDI ${ediType} document processed successfully.`
-    });
-
+    return NextResponse.json({ success: true, message: `Inbound EDI ${ediType} document processed successfully.` });
   } catch (err) {
     console.error("[POST /api/edi/inbound]", err);
     return NextResponse.json({ error: "Failed to process inbound EDI" }, { status: 500 });

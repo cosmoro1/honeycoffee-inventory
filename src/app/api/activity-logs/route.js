@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 
-
 export const dynamic = "force-dynamic"; 
 
 export async function GET() {
@@ -12,9 +11,7 @@ export async function GET() {
          type                                              AS title,
          message                                           AS description,
          DATE_FORMAT(created_at, '%h:%i %p')               AS time,
-         status,
-         edi_doc_type,
-         raw_payload
+         status
        FROM activity_logs
        ORDER BY created_at DESC
        LIMIT 50`
@@ -28,17 +25,15 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-   
-    const { type, reference, message, status, edi_doc_type, raw_payload } = await request.json();
+    const { type, reference, message, status } = await request.json();
     
     if (!type || !message) {
       return NextResponse.json({ error: "type and message are required" }, { status: 400 });
     }
     
-    
     await pool.query(
-      "INSERT INTO activity_logs (type, reference, message, status, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?)",
-      [type, reference ?? null, message, status ?? "OK", edi_doc_type ?? null, raw_payload ?? null]
+      "INSERT INTO activity_logs (type, reference, message, status) VALUES (?, ?, ?, ?)",
+      [type, reference ?? null, message, status ?? "OK"]
     );
     
     return NextResponse.json({ success: true }, { status: 201 });
