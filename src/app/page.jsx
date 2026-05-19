@@ -99,16 +99,43 @@ export default function CustomerLandingPage() {
     }, 0);
 
     try {
+      // 1. Log the customer order history record
       await fetch("/api/customer-orders", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ pickupNumber, items: cartItems, totalAmount }),
       });
-    } catch (err) {
-      console.error("Checkout save failed:", err);
-    }
 
-    setOrderMessage(`Pickup number ${pickupNumber} is ready. Please proceed to the counter.`);
+      console.log("Customer order log saved. Parsing product recipe ingredient deductions...");
+
+      // 2. Multi-item inventory recipe update iterator loop
+      for (const item of cartItems) {
+        const invResponse = await fetch("https://honeycoffee-inventory.vercel.app/api/inventory", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            productId: item.id,
+            quantitySold: item.quantity
+          }),
+        });
+
+        const invData = await invResponse.json();
+
+        if (!invResponse.ok) {
+          console.error(`[Inventory Sync Error] Failed deduction tracking loop for ${item.id}:`, invData.error);
+        } else {
+          console.log(`[Inventory Sync Success]: ${invData.message}`);
+        }
+      }
+
+      // 3. Reset the frontend UI states completely for the next transaction frame
+      setCartItems([]);
+      setOrderMessage(`Pickup number ${pickupNumber} is ready. Please proceed to the counter.`);
+      
+    } catch (err) {
+      console.error("Critical POS checkout sync pipeline network failure:", err);
+      setOrderMessage("Network connection error synchronizing inventory logs.");
+    }
   }
 
   return (
