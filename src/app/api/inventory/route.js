@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 
+// 1. GET: Fetch stock tracking items for layout views
 export async function GET() {
   try {
     const [rows] = await pool.query(
@@ -20,6 +21,7 @@ export async function GET() {
   }
 }
 
+// 2. POST: Deduct recipe ingredients accurately based on quantities sold
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -31,51 +33,54 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing or invalid required fields" }, { status: 400 });
     }
 
-    // 1. Fetch all recipe parts mapping to the ID parameter (Cast to String to ensure column type match)
-    const [recipeIngredients] = await pool.query(
+    // A. Check if a custom ingredient recipe structure exists for this ID
+    let [recipeIngredients] = await pool.query(
       "SELECT inventory_item, quantity_required FROM product_recipes WHERE product_id = ?",
       [String(targetProductId)]
     );
 
-    // Safety Fallback Block: If no recipe exists, attempt a direct table match against raw ingredient names
+    // B. GLOBAL SAFETY FALLBACK SYSTEM
+    // If the database has no formula mapped yet, dynamically detect the item category from the products table!
     if (!recipeIngredients || recipeIngredients.length === 0) {
-      console.log(`[Inventory Engine]: No recipe configured for ID: ${targetProductId}. Running safe fallback.`);
+      console.log(`[Inventory Engine] Missing custom recipe for ID ${targetProductId}. Running global categorical mapping...`);
       
-      const [directRowMatch] = await pool.query("SELECT item FROM inventory WHERE item = ?", [targetProductId]);
+      const [productMeta] = await pool.query("SELECT name, category FROM products WHERE id = ?", [targetProductId]);
       
-      if (directRowMatch.length > 0) {
-        await pool.query(
-          `UPDATE inventory 
-           SET current_stock = current_stock - ?,
-               status = CASE 
-                 WHEN (current_stock) <= 0 THEN 'Out of Stock'
-                 WHEN (current_stock) <= 10 THEN 'Critical'
-                 WHEN (current_stock) <= 25 THEN 'Low Stock'
-                 ELSE 'OK'
-               END,
-               last_updated = NOW()
-           WHERE item = ?`,
-          [quantitySold, targetProductId] // Directly updates utilizing clean, simple placeholder matching bounds
-        );
-      } else {
-        console.warn(`[Inventory Sync Terminated]: Unknown item ID tracking point: ${targetProductId}`);
-        return NextResponse.json({ success: true, message: "Unknown product ID reference. Stocks left intact." });
+      if (productMeta && productMeta.length > 0) {
+        const cat = productMeta[0].category.toLowerCase();
+        const name = productMeta[0].name.toLowerCase();
+        const temporaryRecipes = [];
+
+        // If it's a liquid beverage group, it MUST deduct a cup!
+        if (cat === "coffee" || cat === "blended" || cat === "tea") {
+          temporaryRecipes.push({ inventory_item: "Paper Cups (L)", quantity_required: 1.00 });
+          
+          if (cat === "coffee" || name.includes("frappe") || name.includes("coffee")) {
+            temporaryRecipes.push({ inventory_item: "Arabica Beans", quantity_required: 0.02 });
+          }
+          if (name.includes("latte") || name.includes("cappuccino") || cat === "blended") {
+            temporaryRecipes.push({ inventory_item: "Fresh Milk", quantity_required: 0.22 });
+          }
+        } else if (cat === "snacks") {
+          temporaryRecipes.push({ inventory_item: "Muffins", quantity_required: 1.00 });
+        }
+
+        recipeIngredients = temporaryRecipes;
       }
-    } else {
-      // Recipe match confirmed! Run loop through database table array elements safely
+    }
+
+    // C. DATABASE DEDUCTION UPDATE EXECUTION
+    if (recipeIngredients && recipeIngredients.length > 0) {
       for (const ingredient of recipeIngredients) {
         const totalDeduction = Number(ingredient.quantity_required) * quantitySold;
 
-        // Optimized query processing execution logic avoiding nested double calculations
+        // Deduct raw ingredient stock weights
         await pool.query(
-          `UPDATE inventory 
-           SET current_stock = current_stock - ?,
-               last_updated = NOW()
-           WHERE item = ?`,
+          "UPDATE inventory SET current_stock = current_stock - ?, last_updated = NOW() WHERE item = ?",
           [totalDeduction, ingredient.inventory_item]
         );
 
-        // Recalculate status strings based on the structural drops safely
+        // Dynamically adjust inventory system critical status flags
         await pool.query(
           `UPDATE inventory 
            SET status = CASE 
@@ -88,30 +93,26 @@ export async function POST(request) {
           [ingredient.inventory_item]
         );
       }
+    } else {
+      console.warn(`[Inventory Sync Aborted] Unmapped item context reference: ${targetProductId}`);
     }
 
-    // Background Async Procurement Trigger Framework (Restock Engine)
+    // D. BACKGROUND AUTOMATED SUPPLY RESTOCK TRiggers (EDI 850 Automation)
     (async () => {
       try {
         const [lowStockItems] = await pool.query(
           "SELECT item, current_stock, unit FROM inventory WHERE status = 'Low Stock' OR status = 'Critical'"
         );
-
         if (!lowStockItems || lowStockItems.length === 0) return;
 
         const filteredItems = [];
         for (const stockItem of lowStockItems) {
           const [recentOrders] = await pool.query(
-            `SELECT id FROM activity_logs 
-             WHERE type = 'Order' 
-               AND message LIKE ? 
-               AND created_at >= NOW() - INTERVAL 1 DAY`,
+            "SELECT id FROM activity_logs WHERE type = 'Order' AND message LIKE ? AND created_at >= NOW() - INTERVAL 1 DAY",
             [`%${stockItem.item}%`]
           );
-
           if (recentOrders.length === 0) filteredItems.push(stockItem);
         }
-
         if (filteredItems.length === 0) return;
 
         const now = new Date();
@@ -123,16 +124,7 @@ export async function POST(request) {
 
         let isa = `ISA*00* *00* *ZZ*HONEYCOFFEE   *ZZ*SERMACROPS    *${date6Char}*${time4Char}*U*00401*${controlNum}*0*P*>~\n`;
         let gs = `GS*PO*HONEYCOFFEE*SERMACROPS*${date8Char}*${time4Char}*1*X*004010~\n`;
-        
-        let bodySegments = [
-          `ST*850*0001`,
-          `BEG*00*NE*${poNumber}**${date8Char}`,
-          `N1*BT*HONEY COFFEE SHOP*92*HQ001`,
-          `N1*ST*HONEY COFFEE SHOP*92*STORE01`,
-          `N3*Unit 3 Ground Floor Sunrise Commercial Building`,
-          `N4*Calamba*Laguna*4027*PH`,
-          `N1*SU*Sermacrops*92*SUP123`
-        ];
+        let bodySegments = [`ST*850*0001`, `BEG*00*NE*${poNumber}**${date8Char}`, `N1*BT*HONEY COFFEE SHOP*92*HQ001`, `N1*ST*HONEY COFFEE SHOP*92*STORE01`, `N3*Unit 3 Ground Floor Sunrise Commercial Building`, `N4*Calamba*Laguna*4027*PH`, `N1*SU*Sermacrops*92*SUP123`];
 
         let itemLogNames = [];
         filteredItems.forEach((lowItem, index) => {
@@ -146,10 +138,7 @@ export async function POST(request) {
 
         const supplierRes = await fetch("https://sermacrops-repo.onrender.com/api/edi/inbound", {
           method: "POST",
-          headers: {
-            "Authorization": `Bearer ${process.env.MY_INBOUND_TOKEN || "test"}`,
-            "Content-Type": "application/EDI-X12"
-          },
+          headers: { "Authorization": `Bearer ${process.env.MY_INBOUND_TOKEN || "test"}`, "Content-Type": "application/EDI-X12" },
           body: fullX12Payload
         });
 
@@ -168,10 +157,7 @@ export async function POST(request) {
       }
     })();
 
-    return NextResponse.json({ 
-      success: true, 
-      message: `Stock inventory successfully reduced for choice transaction ${targetProductId}.` 
-    });
+    return NextResponse.json({ success: true, message: "Inventory transaction processed successfully." });
 
   } catch (err) {
     console.error("[POST /api/inventory]", err);
