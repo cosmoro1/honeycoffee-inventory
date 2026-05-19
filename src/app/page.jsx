@@ -108,9 +108,9 @@ export default function CustomerLandingPage() {
 
       console.log("Customer order log saved. Parsing product recipe ingredient deductions...");
 
-      // 2. Multi-item inventory recipe update iterator loop
+      // 2. Multi-item inventory recipe update iterator loop (Using safe relative pathway)
       for (const item of cartItems) {
-        const invResponse = await fetch("https://honeycoffee-inventory.vercel.app/api/inventory", {
+        const invResponse = await fetch("/api/inventory", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
