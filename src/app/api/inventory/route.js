@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 
-// 1. GET: Fetch stock tracking items for layout views
+// 1. GET: Fetch current live stock levels with priority sorting
 export async function GET() {
   try {
     const [rows] = await pool.query(
@@ -21,7 +21,7 @@ export async function GET() {
   }
 }
 
-// 2. POST: Deduct recipe ingredients accurately based on quantities sold
+// 2. POST: Process multi-item nested ingredient deductions and restock checks
 export async function POST(request) {
   try {
     const body = await request.json();
@@ -33,54 +33,88 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing or invalid required fields" }, { status: 400 });
     }
 
-    // A. Check if a custom ingredient recipe structure exists for this ID
+    // A. Check if an explicit blueprint recipe configuration exists in the DB
     let [recipeIngredients] = await pool.query(
       "SELECT inventory_item, quantity_required FROM product_recipes WHERE product_id = ?",
       [String(targetProductId)]
     );
 
-    // B. GLOBAL SAFETY FALLBACK SYSTEM
-    // If the database has no formula mapped yet, dynamically detect the item category from the products table!
+    // B. BULLETPROOF ACCUMULATOR FALLBACK ENGINE
+    // Runs dynamically if map-recipes hasn't cataloged this specific numeric database primary key yet
     if (!recipeIngredients || recipeIngredients.length === 0) {
-      console.log(`[Inventory Engine] Missing custom recipe for ID ${targetProductId}. Running global categorical mapping...`);
+      console.log(`[Inventory Engine] Recipe missing for product ID ${targetProductId}. Running fallback builder...`);
       
       const [productMeta] = await pool.query("SELECT name, category FROM products WHERE id = ?", [targetProductId]);
       
       if (productMeta && productMeta.length > 0) {
-        const cat = productMeta[0].category.toLowerCase();
-        const name = productMeta[0].name.toLowerCase();
+        const cat = productMeta[0].category.toLowerCase().trim();
+        const name = productMeta[0].name.toLowerCase().trim();
         const temporaryRecipes = [];
 
-        // If it's a liquid beverage group, it MUST deduct a cup!
-        if (cat === "coffee" || cat === "blended" || cat === "tea") {
+        // Determine if it belongs to any liquid beverage group
+        const isBeverage = (cat === "coffee" || cat === "blended" || cat === "tea" || name.includes("frappe") || name.includes("latte") || name.includes("brew") || name.includes("tea"));
+
+        if (isBeverage) {
+          // Rule #1: EVERY liquid beverage selection drops exactly 1 Paper Cup unit!
           temporaryRecipes.push({ inventory_item: "Paper Cups (L)", quantity_required: 1.00 });
+
+          // Rule #2: Coffee Bean Deductions (Exclude pure teas, fruit shakes, and cocoa creamers)
+          const needsBeans = (cat === "coffee" || name.includes("coffee") || name.includes("frappe") || name.includes("espresso") || name.includes("brew")) && 
+                             (!name.includes("tea") && !name.includes("mango") && !name.includes("cookies") && !name.includes("chocolate"));
           
-          if (cat === "coffee" || name.includes("frappe") || name.includes("coffee")) {
+          if (needsBeans) {
             temporaryRecipes.push({ inventory_item: "Arabica Beans", quantity_required: 0.02 });
           }
-          if (name.includes("latte") || name.includes("cappuccino") || cat === "blended") {
-            temporaryRecipes.push({ inventory_item: "Fresh Milk", quantity_required: 0.22 });
+
+          // Rule #3: Fresh Milk Line Deductions
+          const needsMilk = (name.includes("latte") || name.includes("cappuccino") || name.includes("mocha") || name.includes("white") || cat === "blended" || name.includes("frappe") || name.includes("milk tea") || name.includes("gatas") || name.includes("shake"));
+          
+          if (needsMilk && !name.includes("matcha")) { // Matcha uses your Oat Milk line
+            const milkVolume = (cat === "blended" || name.includes("frappe")) ? 0.20 : 0.22;
+            temporaryRecipes.push({ inventory_item: "Fresh Milk", quantity_required: milkVolume });
           }
-        } else if (cat === "snacks") {
-          temporaryRecipes.push({ inventory_item: "Muffins", quantity_required: 1.00 });
+
+          // Rule #4: Sweetener Syrup Volume Deductions
+          const needsSyrup = (name.includes("spanish") || name.includes("caramel") || name.includes("vanilla") || name.includes("hazelnut") || name.includes("white chocolate") || name.includes("frappe") || name.includes("shake") || name.includes("milk tea") || name.includes("frost") || name.includes("cue") || name.includes("turon"));
+          
+          if (needsSyrup) {
+            temporaryRecipes.push({ inventory_item: "Sugar Syrup", quantity_required: 0.03 });
+          }
+
+          // Rule #5: Matcha Extracts & Alternative Plant Milks
+          if (name.includes("matcha")) {
+            temporaryRecipes.push({ inventory_item: "Matcha Powder", quantity_required: 0.015 });
+            temporaryRecipes.push({ inventory_item: "Oat Milk", quantity_required: 0.25 });
+          }
+        } else {
+          // --- PASTRY & SNACKS ACCUMULATOR ---
+          if (name.includes("croissant") || name.includes("danish")) {
+            temporaryRecipes.push({ inventory_item: "Croissants", quantity_required: 1.00 });
+          } else if (name.includes("muffin") || name.includes("ensaymada") || name.includes("bread") || name.includes("sandwich") || name.includes("pasta") || name.includes("roll")) {
+            temporaryRecipes.push({ inventory_item: "Muffins", quantity_required: 1.00 });
+          }
+          
+          if (name.includes("cue") || name.includes("turon")) {
+            temporaryRecipes.push({ inventory_item: "Sugar Syrup", quantity_required: 0.02 });
+          }
         }
 
         recipeIngredients = temporaryRecipes;
       }
     }
 
-    // C. DATABASE DEDUCTION UPDATE EXECUTION
+    // C. CLEAN SEQUENTIAL DATABASE STOCK DROPS
     if (recipeIngredients && recipeIngredients.length > 0) {
       for (const ingredient of recipeIngredients) {
         const totalDeduction = Number(ingredient.quantity_required) * quantitySold;
 
-        // Deduct raw ingredient stock weights
+        // 1. Subtract values from raw tracking rows
         await pool.query(
           "UPDATE inventory SET current_stock = current_stock - ?, last_updated = NOW() WHERE item = ?",
           [totalDeduction, ingredient.inventory_item]
         );
 
-        // Dynamically adjust inventory system critical status flags
+        // 2. Adjust live tracking health thresholds (OK, Low, Critical)
         await pool.query(
           `UPDATE inventory 
            SET status = CASE 
@@ -93,11 +127,12 @@ export async function POST(request) {
           [ingredient.inventory_item]
         );
       }
+      console.log(`[Inventory Success] Deducted components for ID ${targetProductId}:`, recipeIngredients);
     } else {
-      console.warn(`[Inventory Sync Aborted] Unmapped item context reference: ${targetProductId}`);
+      console.warn(`[Inventory Warning] No items could be resolved for deduction mapping on ID: ${targetProductId}`);
     }
 
-    // D. BACKGROUND AUTOMATED SUPPLY RESTOCK TRiggers (EDI 850 Automation)
+    // D. BACKGROUND AUTOMATED RESTOCK MANAGER (Asynchronous EDI Dispatch)
     (async () => {
       try {
         const [lowStockItems] = await pool.query(
