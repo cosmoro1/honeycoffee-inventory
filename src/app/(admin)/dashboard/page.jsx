@@ -15,35 +15,9 @@ export default function DashboardPage() {
   const [logs, setLogs]         = useState([]);
 
   useEffect(() => {
-    // Fetch stats
-    fetch("/api/dashboard-stats")
-      .then((r) => r.json())
-      .then(setStats)
-      .catch(console.error);
-
-    // Fetch invoices
-    fetch("/api/invoices")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && Array.isArray(data.invoices)) {
-          setInvoices(data.invoices);
-        } else if (Array.isArray(data)) {
-          setInvoices(data);
-        }
-      })
-      .catch(console.error);
-
-    // Fetch activity logs safely (resolves logs.map error)
-    fetch("/api/activity-logs")
-      .then((r) => r.json())
-      .then((data) => {
-        if (data && Array.isArray(data.logs)) {
-          setLogs(data.logs);
-        } else if (Array.isArray(data)) {
-          setLogs(data);
-        }
-      })
-      .catch(console.error);
+    fetch("/api/dashboard-stats").then((r) => r.json()).then(setStats).catch(console.error);
+    fetch("/api/invoices").then((r) => r.json()).then(setInvoices).catch(console.error);
+    fetch("/api/activity-logs").then((r) => r.json()).then(setLogs).catch(console.error);
   }, []);
 
   const invoiceColumns = [
@@ -56,10 +30,10 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Total Orders"     value={stats?.totalOrders    ?? "—"} helper="All monitored EDI orders"    icon={ClipboardList} tone="info"    />
-        <StatCard label="Pending Orders"  value={stats?.pendingOrders  ?? "—"} helper="Needs supplier confirmation" icon={AlertTriangle} tone="warning" />
+        <StatCard label="Total Orders"    value={stats?.totalOrders    ?? "—"} helper="All monitored EDI orders"       icon={ClipboardList} tone="info"    />
+        <StatCard label="Pending Orders"  value={stats?.pendingOrders  ?? "—"} helper="Needs supplier confirmation"    icon={AlertTriangle} tone="warning" />
         <StatCard label="Delivered Orders"value={stats?.deliveredOrders?? "—"} helper="Completed deliveries"          icon={Truck}         tone="success" />
-        <StatCard label="Low Stock Alert" value={stats?.lowStockItems   ?? "—"} helper="Items below safe level"        icon={PackageCheck}  tone="danger"  />
+        <StatCard label="Low Stock Alert" value={stats?.lowStockItems  ?? "—"} helper="Items below safe level"        icon={PackageCheck}  tone="danger"  />
       </section>
 
       <EdiFlow />
