@@ -3,83 +3,97 @@ import pool from "@/lib/db";
 
 export async function GET() {
   try {
-    console.log("Starting master recipe matching sync with real menu profiles...");
+    console.log("Wiping and seeding exact master product recipes...");
 
-    // 1. Clear out old layout mappings to ensure clean constraints
     await pool.query("SET FOREIGN_KEY_CHECKS = 0;");
     await pool.query("TRUNCATE TABLE product_recipes;");
     await pool.query("SET FOREIGN_KEY_CHECKS = 1;");
 
-    // 2. Fetch all products dynamically to pull their active numeric database IDs
-    const [products] = await pool.query("SELECT id, name FROM products");
+    const [products] = await pool.query("SELECT id, name, category FROM products");
 
     if (!products || products.length === 0) {
-      return NextResponse.json({ success: false, error: "No products found in database." }, { status: 400 });
+      return NextResponse.json({ success: false, error: "Run seed-all-products first!" }, { status: 400 });
     }
 
     const recipeRows = [];
 
-    // 3. Process every active menu entry found in your POS grid view
     products.forEach((product) => {
-      const productName = product.name.toLowerCase().trim();
+      const name = product.name.toLowerCase().trim();
+      const cat = product.category.toLowerCase().trim();
       const stringId = String(product.id);
 
-      // --- FLAG TO SEPARATE DRINKS AND SNACKS ---
-      let isDrink = false;
-
-      // --- A. COFFEE DRINKS BASE MATCHING ---
-      if (productName === "espresso") {
-        recipeRows.push([stringId, "Arabica Beans", 0.02]); // 20g beans
-        isDrink = true;
-      } else if (productName === "americano" || productName === "hot coffee" || productName === "cold brew") {
-        recipeRows.push([stringId, "Arabica Beans", 0.02]);
-        isDrink = true;
-      } else if (productName === "cappuccino" || productName === "latte" || productName === "cafe latte (hot / iced)" || productName === "mocha (hot / iced)" || productName === "caramel macchiato" || productName === "vanilla latte" || productName === "hazelnut-latte") {
-        recipeRows.push([stringId, "Arabica Beans", 0.02]);
-        recipeRows.push([stringId, "Fresh Milk", 0.22]); // 220ml fresh milk base
-        isDrink = true;
-      } else if (productName.includes("barako")) {
-        recipeRows.push([stringId, "Robusta Blend", 0.02]);
-        isDrink = true;
-      }
-
-      // --- B. TEAS & BLENDED INGREDIENTS ---
-      if (productName === "matcha latte" || productName.includes("matcha")) {
-        recipeRows.push([stringId, "Matcha Powder", 0.015]); // 15g matcha
-        recipeRows.push([stringId, "Oat Milk", 0.25]);       // 250ml oat milk
-        isDrink = true;
-      } else if (productName === "green tea" || productName === "chamomile" || productName.includes("tea")) {
-        // Hot / Iced teas use water base instead of fresh dairy milk milk lines
-        isDrink = true;
-      }
-
-      // --- C. SPECIALTY SYRUP SYNERGY MODIFIERS ---
-      if (productName === "latte" || productName === "caramel macchiato" || productName.includes("frappe") || productName.includes("milk tea")) {
-        recipeRows.push([stringId, "Sugar Syrup", 0.03]);
-      }
-
-      // --- D. THE FIXED UNIVERSAL LIQUID CUP ASSIGNMENT LOOP ---
-      if (isDrink) {
-        // Every single beverage item sold from your store automatically drops 1 Paper Cup!
+      // --- ALL BEVERAGES GET A PAPER CUP ---
+      if (cat === "coffee" || cat === "blended" || cat === "tea") {
         recipeRows.push([stringId, "Paper Cups (L)", 1.00]);
       }
 
-      // --- E. BAKED GOODS & PASTRY STOCK ALIGNMENTS ---
-      if (!isDrink) {
-        if (productName.includes("croissant") || productName === "cheese danish") {
-          recipeRows.push([stringId, "Croissants", 1.00]); // Maps directly to your 'Croissants' table row
-        } else if (productName.includes("muffin") || productName.includes("ensaymada")) {
-          recipeRows.push([stringId, "Muffins", 1.00]);    // Maps directly to your 'Muffins' table row
-        } else if (productName === "banana bread" || productName.includes("sandwich") || productName.includes("pasta")) {
-          // General fallback category for unique bakery items
+      // --- BEANS RAW MATERIALS ---
+      if (name.includes("barako") && name.includes("liberica")) {
+        recipeRows.push([stringId, "Robusta Blend", 1.00]);
+      } else if (name.includes("sagada") || name.includes("benguet") || name.includes("mindanao")) {
+        recipeRows.push([stringId, "Arabica Beans", 1.00]);
+      } else if (name.includes("house blend")) {
+        recipeRows.push([stringId, "Arabica Beans", 0.50]);
+        recipeRows.push([stringId, "Robusta Blend", 0.50]);
+      }
+
+      // --- COFFEE DRINKS ---
+      if (name === "barako brew") {
+        recipeRows.push([stringId, "Robusta Blend", 0.02]);
+      } else if (name === "espresso" || name === "americano" || name === "hot coffee" || name === "cold brew") {
+        recipeRows.push([stringId, "Arabica Beans", 0.02]);
+      } else if (name === "cappuccino" || name === "latte" || name === "cafe latte (hot / iced)" || name === "flat white" || name === "spanish latte" || name === "mocha (hot / iced)" || name === "caramel macchiato" || name === "vanilla latte" || name === "hazelnut latte" || name === "white chocolate mocha" || name === "kapeng gatas") {
+        recipeRows.push([stringId, "Arabica Beans", 0.02]);
+        recipeRows.push([stringId, "Fresh Milk", 0.22]);
+        if (name === "spanish latte" || name === "caramel macchiato" || name === "vanilla latte" || name === "hazelnut latte" || name === "white chocolate mocha") {
+          recipeRows.push([stringId, "Sugar Syrup", 0.03]);
+        }
+      }
+
+      // --- FRAPPES & BLENDED (EXACT MATCHES) ---
+      if (cat === "blended" || name.includes("frappe") || name.includes("frost") || name.includes("blended") || name.includes("shake")) {
+        recipeRows.push([stringId, "Sugar Syrup", 0.03]);
+        
+        // Milk setup for blended
+        if (name.includes("matcha")) {
+          recipeRows.push([stringId, "Oat Milk", 0.25]);
+          recipeRows.push([stringId, "Matcha Powder", 0.015]);
+        } else {
+          recipeRows.push([stringId, "Fresh Milk", 0.20]);
+        }
+
+        // Coffee base checks for frappes
+        if (name.includes("mocha") || name.includes("caramel") || name.includes("vanilla") || name.includes("hazelnut") || name.includes("jelly") || name.includes("frost")) {
+          recipeRows.push([stringId, "Arabica Beans", 0.02]);
+        }
+      }
+
+      // --- TEAS ---
+      if (cat === "tea") {
+        if (name.includes("milk tea")) {
+          recipeRows.push([stringId, "Fresh Milk", 0.20]);
+          recipeRows.push([stringId, "Sugar Syrup", 0.03]);
+        } else if (name.includes("iced tea")) {
+          recipeRows.push([stringId, "Sugar Syrup", 0.03]);
+        } else if (name === "matcha latte") {
+          recipeRows.push([stringId, "Oat Milk", 0.22]);
+          recipeRows.push([stringId, "Matcha Powder", 0.015]);
+        }
+      }
+
+      // --- BAKED GOODS & SNACKS ---
+      if (cat === "snacks") {
+        if (name.includes("croissant") || name === "cheese danish") {
+          recipeRows.push([stringId, "Croissants", 1.00]);
+        } else if (name.includes("muffin") || name.includes("ensaymada") || name === "banana bread" || name.includes("sandwich") || name.includes("roll")) {
           recipeRows.push([stringId, "Muffins", 1.00]);
-        } else if (productName === "banana cue" || productName === "turon") {
-          recipeRows.push([stringId, "Sugar Syrup", 0.02]); // Glaze coating base
+        }
+        if (name.includes("cue") || name.includes("turon")) {
+          recipeRows.push([stringId, "Sugar Syrup", 0.02]);
         }
       }
     });
 
-    // 4. Batch push the mapped recipes safely into the table
     await pool.query(
       "INSERT INTO product_recipes (product_id, inventory_item, quantity_required) VALUES ?",
       [recipeRows]
@@ -87,9 +101,8 @@ export async function GET() {
 
     return NextResponse.json({ 
       success: true, 
-      message: `Successfully generated ${recipeRows.length} blueprint recipes mapped to real IDs! Paper cup tracking locked.` 
+      message: `Perfect! Inserted ${recipeRows.length} exact recipe links into your database.` 
     });
-
   } catch (err) {
     console.error(err);
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
