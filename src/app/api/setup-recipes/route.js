@@ -7,13 +7,15 @@ export async function GET() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS product_recipes (
           id INT AUTO_INCREMENT PRIMARY KEY,
-          product_id VARCHAR(100) NOT NULL,      
-          inventory_item VARCHAR(100) NOT NULL,  
+          product_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,      
+          inventory_item VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,  
           quantity_required DECIMAL(10, 2) NOT NULL,
-          FOREIGN KEY (inventory_item) REFERENCES inventory(item) ON UPDATE CASCADE
-      );
+          CONSTRAINT fk_inventory_item FOREIGN KEY (inventory_item) 
+            REFERENCES inventory(item) 
+            ON UPDATE CASCADE 
+            ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
     `);
-
     // 2. Clear old records to prevent duplicate keys on re-run
     await pool.query("TRUNCATE TABLE product_recipes;");
 
