@@ -56,18 +56,18 @@ export async function POST(request) {
       }
     }
 
-    const targetDateString = new Date().toLocaleString("en-US", {
-      timeZone: "Asia/Manila",
-      hour12: false
-    });
+    // Fixed Timezone Engine: Safe date offset generation for Asia/Manila (UTC+8)
+    const now = new Date();
+    const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
+    const manilaOffset = 8 * 60 * 60 * 1000; 
+    const manilaDate = new Date(utcTime + manilaOffset);
 
-    const parsedDate = new Date(targetDateString);
-    const year = parsedDate.getFullYear();
-    const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
-    const day = String(parsedDate.getDate()).padStart(2, "0");
-    const hours = String(parsedDate.getHours()).padStart(2, "0");
-    const minutes = String(parsedDate.getMinutes()).padStart(2, "0");
-    const seconds = String(parsedDate.getSeconds()).padStart(2, "0");
+    const year = manilaDate.getFullYear();
+    const month = String(manilaDate.getMonth() + 1).padStart(2, "0");
+    const day = String(manilaDate.getDate()).padStart(2, "0");
+    const hours = String(manilaDate.getHours()).padStart(2, "0");
+    const minutes = String(manilaDate.getMinutes()).padStart(2, "0");
+    const seconds = String(manilaDate.getSeconds()).padStart(2, "0");
     
     const mysqlTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
