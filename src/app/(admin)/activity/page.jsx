@@ -8,7 +8,21 @@ export default function ActivityPage() {
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
-    fetch("/api/activity-logs").then((r) => r.json()).then(setLogs).catch(console.error);
+    async function fetchLogs() {
+      try {
+        // NEW: Added the cache bypass configuration to the fetch call
+        const res = await fetch("/api/activity-logs", { cache: "no-store" });
+        if (!res.ok) throw new Error("Failed to pull activity logging stream");
+        
+        const data = await res.json();
+        setLogs(Array.isArray(data) ? data : []);
+      } catch (err) {
+        console.error("Database connection error:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchLogs();
   }, []);
 
   return (
