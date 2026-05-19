@@ -95,6 +95,31 @@ export function ActivityTimeline({ logs }) {
                 </p>
               </div>
 
+              {/* EDI Document Type & Raw Payload Viewer Terminal Block */}
+              {selectedLog.raw_payload && (
+                <div>
+                  <div className="flex items-center justify-between mt-2 mb-1">
+                    <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                      Raw X12 Payload
+                    </p>
+                    <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 rounded border border-blue-500/20">
+                      EDI {selectedLog.edi_doc_type || "Unknown"}
+                    </span>
+                  </div>
+                  <div className="bg-[#0d1117] border border-slate-700 rounded-xl overflow-hidden shadow-inner">
+                    <div className="bg-slate-800/50 px-3 py-1.5 border-b border-slate-700 flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
+                      <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
+                      <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
+                      <span className="text-[10px] text-slate-400 ml-2 font-mono">payload.x12</span>
+                    </div>
+                    <pre className="p-3 overflow-x-auto text-[11px] leading-relaxed text-emerald-400 font-mono whitespace-pre-wrap max-h-[150px] overflow-y-auto custom-scrollbar">
+                      {selectedLog.raw_payload}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
               <div className="flex justify-between items-center bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5">
                 <div>
                   <p className="text-xs font-medium text-slate-400 dark:text-slate-500">

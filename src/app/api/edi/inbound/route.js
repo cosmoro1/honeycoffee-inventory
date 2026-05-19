@@ -86,9 +86,10 @@ export async function POST(request) {
       }
     }
 
+    // Securely saves the ediType and raw text payload directly into the new columns
     await pool.query(
-      "INSERT INTO activity_logs (type, reference, message, status, created_at) VALUES (?, ?, ?, ?, ?)",
-      [logType, poNumber, logMessage, "OK", mysqlTimestamp]
+      "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [logType, poNumber, logMessage, "OK", mysqlTimestamp, ediType, rawEdiContent]
     );
 
     return NextResponse.json({ success: true, message: `Inbound EDI ${ediType} document processed successfully.` });
