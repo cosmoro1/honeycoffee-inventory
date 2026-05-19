@@ -109,9 +109,10 @@ export async function POST(request) {
       }
     }
 
+    // UPDATED: Now inserts edi_doc_type and raw_payload directly into the database
     await pool.query(
-      "INSERT INTO activity_logs (type, reference, message, status, created_at) VALUES (?, ?, ?, ?, ?)",
-      [logType, poNumber, logMessage, "OK", mysqlTimestamp]
+      "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [logType, poNumber, logMessage, "OK", mysqlTimestamp, ediType, rawEdiContent]
     );
 
     return NextResponse.json({
