@@ -49,16 +49,31 @@ export async function POST(request) {
         poNumber = segments[3];
         const ackType = segments[2];
         if (ackType === "RE") {
-          orderStatus = "Cancelled";
+          orderStatus = "Rejected";
         } else {
-          orderStatus = "Confirmed";
+          orderStatus = "Accepted";
         }
       }
     }
 
+    const targetDateString = new Date().toLocaleString("en-US", {
+      timeZone: "Asia/Manila",
+      hour12: false
+    });
+
+    const parsedDate = new Date(targetDateString);
+    const year = parsedDate.getFullYear();
+    const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+    const day = String(parsedDate.getDate()).padStart(2, "0");
+    const hours = String(parsedDate.getHours()).padStart(2, "0");
+    const minutes = String(parsedDate.getMinutes()).padStart(2, "0");
+    const seconds = String(parsedDate.getSeconds()).padStart(2, "0");
+    
+    const mysqlTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+
     if (ediType === "PO" || ediType === "855") {
       logType = "Order";
-      if (orderStatus === "Cancelled") {
+      if (orderStatus === "Rejected") {
         logMessage = `Purchase order ${poNumber || "N/A"} was REJECTED by Sermacrops.`;
       } else {
         logMessage = `Purchase order ${poNumber || "N/A"} confirmed by Sermacrops.`;
@@ -66,33 +81,42 @@ export async function POST(request) {
       
       if (poNumber && orderStatus) {
         await pool.query(
-          "UPDATE edi_orders SET status = ? WHERE id = ?",
-          [orderStatus, poNumber]
+          "UPDATE edi_orders SET status = ?, updated_at = ? WHERE po_number = ?",
+          [orderStatus, mysqlTimestamp, poNumber]
         );
       }
-    } else if (ediType === "SH" || ediType === "856") {
+    } 
+    else if (ediType === "SH" || ediType === "856") {
       logType = "Delivery";
       logMessage = `Sermacrops sent Shipping Notice for Order ${poNumber || "N/A"}. Items are now in transit.`;
       
       if (poNumber) {
         await pool.query(
-          "UPDATE edi_orders SET status = 'Shipped' WHERE id = ?",
-          [ "Shipped", poNumber ]
+          "UPDATE edi_orders SET status = 'Shipped', updated_at = ? WHERE po_number = ?",
+          [mysqlTimestamp, poNumber]
         );
       }
-    } else if (ediType === "IN" || ediType === "810") {
+    } 
+    else if (ediType === "IN" || ediType === "810") {
       logType = "Invoice";
       logMessage = `New Supplier Invoice received for Order ${poNumber || "N/A"}. Pending payment review.`;
+      
+      if (poNumber) {
+        await pool.query(
+          "UPDATE edi_orders SET status = 'Invoiced', updated_at = ? WHERE po_number = ?",
+          [mysqlTimestamp, poNumber]
+        );
+      }
     }
 
     await pool.query(
-      "INSERT INTO activity_logs (type, reference, message, status) VALUES (?, ?, ?, ?)",
-      [logType, poNumber, logMessage, "OK"]
+      "INSERT INTO activity_logs (type, reference, message, status, created_at) VALUES (?, ?, ?, ?, ?)",
+      [logType, poNumber, logMessage, "OK", mysqlTimestamp]
     );
 
     return NextResponse.json({
       success: true,
-      message: `Inbound EDI document processed successfully.`
+      message: `Inbound EDI ${ediType} document processed successfully.`
     });
 
   } catch (err) {
