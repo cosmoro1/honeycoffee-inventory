@@ -9,7 +9,22 @@ export default function InventoryPage() {
   const [inventory, setInventory] = useState([]);
 
   useEffect(() => {
-    fetch("/api/inventory").then((r) => r.json()).then(setInventory).catch(console.error);
+    // 1. Helper function to hit your backend API
+    const fetchInventory = () => {
+      fetch("/api/inventory")
+        .then((r) => r.json())
+        .then(setInventory)
+        .catch(console.error);
+    };
+
+    // Run immediately on mount
+    fetchInventory();
+
+    // 2. Poll the API endpoint every 5 seconds for real-time stock sync
+    const interval = setInterval(fetchInventory, 5000);
+
+    // Clean up the interval on unmount
+    return () => clearInterval(interval);
   }, []);
 
   const columns = [
