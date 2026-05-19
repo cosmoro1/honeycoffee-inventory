@@ -28,6 +28,10 @@ export async function POST(request) {
     let logMessage = "Received inbound EDI document.";
     let orderStatus = null;
 
+   
+    let parsedItems = [];
+    let currentItemSku = null;
+
     const lines = rawEdiContent.split(/[~\n]+/);
     for (let line of lines) {
       line = line.trim();
@@ -43,6 +47,47 @@ export async function POST(request) {
         poNumber = segments[3];
         const ackType = segments[2];
         orderStatus = ackType === "RE" ? "Rejected" : "Accepted";
+      }
+      
+      
+      else if (line.startsWith("PRF*")) {
+        const segments = line.split("*");
+        poNumber = segments[1]; 
+      }
+      
+      
+      else if (line.startsWith("BIG*")) {
+        const segments = line.split("*");
+        if (segments[4]) poNumber = segments[4];
+      }
+      
+    
+      else if (line.startsWith("LIN*")) {
+        const segments = line.split("*");
+        const bpIndex = segments.indexOf("BP");
+        if (bpIndex !== -1 && segments[bpIndex + 1]) {
+          currentItemSku = segments[bpIndex + 1];
+        }
+      }
+      
+     
+      else if (line.startsWith("SN1*") || line.startsWith("IT1*")) {
+        const segments = line.split("*");
+        
+        const quantity = segments[2];
+        
+       
+        if (line.startsWith("IT1*")) {
+          const bpIndex = segments.indexOf("BP");
+          if (bpIndex !== -1 && segments[bpIndex + 1]) {
+            currentItemSku = segments[bpIndex + 1];
+          }
+        }
+
+        if (quantity && currentItemSku) {
+          parsedItems.push(`${quantity}x ${currentItemSku}`);
+          currentItemSku = null; // reset for next item block
+        }
       }
     }
 
@@ -60,6 +105,8 @@ export async function POST(request) {
     
     const mysqlTimestamp = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
 
+    const itemsString = parsedItems.length > 0 ? parsedItems.join(", ") : null;
+
     if (ediType === "PO" || ediType === "855") {
       logType = "Order";
       if (orderStatus === "Rejected") {
@@ -73,20 +120,20 @@ export async function POST(request) {
     } 
     else if (ediType === "SH" || ediType === "856") {
       logType = "Delivery";
-      logMessage = `Sermacrops sent Shipping Notice for Order ${poNumber || "N/A"}. Items are now in transit.`;
+      logMessage = `Sermacrops sent Shipping Notice for Order ${poNumber || "N/A"}.${itemsString ? ` Shipped: [ ${itemsString} ].` : ""} Items are now in transit.`;
       if (poNumber) {
         await pool.query("UPDATE edi_orders SET status = 'Shipped', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
       }
     } 
     else if (ediType === "IN" || ediType === "810") {
       logType = "Invoice";
-      logMessage = `New Supplier Invoice received for Order ${poNumber || "N/A"}. Pending payment review.`;
+      logMessage = `New Supplier Invoice received for Order ${poNumber || "N/A"}.${itemsString ? ` Items billed: [ ${itemsString} ].` : ""} Pending payment review.`;
       if (poNumber) {
         await pool.query("UPDATE edi_orders SET status = 'Invoiced', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
       }
     }
 
-    // Securely saves the ediType and raw text payload directly into the new columns
+    
     await pool.query(
       "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [logType, poNumber, logMessage, "OK", mysqlTimestamp, ediType, rawEdiContent]
