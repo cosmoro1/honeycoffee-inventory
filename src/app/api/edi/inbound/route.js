@@ -28,7 +28,7 @@ export async function POST(request) {
     let logMessage = "Received inbound EDI document.";
     let orderStatus = null;
 
-   
+    // Item-tracking state arrays for multi-segment loops
     let parsedItems = [];
     let currentItemSku = null;
 
@@ -49,19 +49,19 @@ export async function POST(request) {
         orderStatus = ackType === "RE" ? "Rejected" : "Accepted";
       }
       
-      
+      // Catch Order Context for 856 Shipping Notices
       else if (line.startsWith("PRF*")) {
         const segments = line.split("*");
         poNumber = segments[1]; 
       }
       
-      
+      // Catch Order Context for 810 Invoices (BIG*Date*InvoiceNum*PODate*PONumber)
       else if (line.startsWith("BIG*")) {
         const segments = line.split("*");
         if (segments[4]) poNumber = segments[4];
       }
       
-    
+      // Extract Item Part Numbers/SKUs (LIN segment loops)
       else if (line.startsWith("LIN*")) {
         const segments = line.split("*");
         const bpIndex = segments.indexOf("BP");
@@ -70,13 +70,12 @@ export async function POST(request) {
         }
       }
       
-     
+      // Extract Item Quantities and pair them with the current active SKU
       else if (line.startsWith("SN1*") || line.startsWith("IT1*")) {
         const segments = line.split("*");
-        
         const quantity = segments[2];
         
-       
+        // If it's an IT1 invoice loop, the SKU can sometimes live right inside the same segment array
         if (line.startsWith("IT1*")) {
           const bpIndex = segments.indexOf("BP");
           if (bpIndex !== -1 && segments[bpIndex + 1]) {
@@ -86,7 +85,7 @@ export async function POST(request) {
 
         if (quantity && currentItemSku) {
           parsedItems.push(`${quantity}x ${currentItemSku}`);
-          currentItemSku = null; // reset for next item block
+          currentItemSku = null; // reset layout frame for next dynamic loop iteration
         }
       }
     }
@@ -114,26 +113,42 @@ export async function POST(request) {
       } else {
         logMessage = `Purchase order ${poNumber || "N/A"} confirmed by Sermacrops.`;
       }
+      
+      // SAFE WRAPPER: Suppress missing foreign relationship database flags
       if (poNumber && orderStatus) {
-        await pool.query("UPDATE edi_orders SET status = ?, updated_at = ? WHERE po_number = ?", [orderStatus, mysqlTimestamp, poNumber]);
+        try {
+          await pool.query("UPDATE edi_orders SET status = ?, updated_at = ? WHERE po_number = ?", [orderStatus, mysqlTimestamp, poNumber]);
+        } catch (dbErr) {
+          console.warn(`[Inbound Webhook Warning] Could not sync table status for ${poNumber}:`, dbErr.message);
+        }
       }
     } 
     else if (ediType === "SH" || ediType === "856") {
       logType = "Delivery";
       logMessage = `Sermacrops sent Shipping Notice for Order ${poNumber || "N/A"}.${itemsString ? ` Shipped: [ ${itemsString} ].` : ""} Items are now in transit.`;
+      
       if (poNumber) {
-        await pool.query("UPDATE edi_orders SET status = 'Shipped', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
+        try {
+          await pool.query("UPDATE edi_orders SET status = 'Shipped', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
+        } catch (dbErr) {
+          console.warn(`[Inbound Webhook Warning] Could not sync delivery flag status for ${poNumber}:`, dbErr.message);
+        }
       }
     } 
     else if (ediType === "IN" || ediType === "810") {
       logType = "Invoice";
       logMessage = `New Supplier Invoice received for Order ${poNumber || "N/A"}.${itemsString ? ` Items billed: [ ${itemsString} ].` : ""} Pending payment review.`;
+      
       if (poNumber) {
-        await pool.query("UPDATE edi_orders SET status = 'Invoiced', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
+        try {
+          await pool.query("UPDATE edi_orders SET status = 'Invoiced', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
+        } catch (dbErr) {
+          console.warn(`[Inbound Webhook Warning] Could not sync invoice processing status for ${poNumber}:`, dbErr.message);
+        }
       }
     }
 
-    
+    // Always logs the payload record into activity_logs cleanly
     await pool.query(
       "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [logType, poNumber, logMessage, "OK", mysqlTimestamp, ediType, rawEdiContent]
