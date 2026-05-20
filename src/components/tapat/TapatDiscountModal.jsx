@@ -69,7 +69,7 @@ export function TapatDiscountModal({ cart, currentResult, onApply, onClear, onCl
         {phase === "idle" && (
           <div className="mt-5">
             <p className="text-sm text-[#5e6d61] dark:text-emerald-100/75">
-              Enter the cardholder's TAPAT card ID. The discount is computed by
+              Enter the cardholder&apos;s TAPAT card ID. The discount is computed by
               the Government Registry and applied before payment.
             </p>
 
