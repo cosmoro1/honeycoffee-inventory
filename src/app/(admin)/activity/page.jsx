@@ -18,16 +18,17 @@ export default function ActivityPage() {
       .catch(console.error);
   }, []);
 
-  // Filter types mapping with explicit string existence checks to prevent rendering crashes
+  
   const filteredLogs = logs.filter((log) => {
     if (!log || activeFilter === "All") return true;
     
-    // Fallback assignment check if a log type is completely missing or null in the row
     const logType = log.type ? String(log.type).toLowerCase().trim() : "";
 
-    if (activeFilter === "Orders") return logType === "order";
-    if (activeFilter === "Invoices") return logType === "invoice";
-    if (activeFilter === "System") return logType === "system";
+    // This handles both "order" and "orders", "invoice" and "invoices", etc.
+    if (activeFilter === "Orders") return logType.includes("order");
+    if (activeFilter === "Invoices") return logType.includes("invoice");
+    if (activeFilter === "System") return logType.includes("system");
+    
     return true;
   });
 
