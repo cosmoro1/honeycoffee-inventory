@@ -139,24 +139,19 @@ export default function CustomerLandingPage() {
 
       console.log("Customer order log saved. Parsing product recipe ingredient deductions...");
 
-      // 2. Multi-item inventory recipe update iterator loop (Using safe relative pathway)
-      for (const item of cartItems) {
-        const invResponse = await fetch("/api/inventory", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            productId: item.id,
-            quantitySold: item.quantity
-          }),
-        });
+      // 2. Bulk inventory recipe update and single EDI restock trigger
+      const invResponse = await fetch("/api/inventory", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(cartItems), // Sends the whole cart array at once
+      });
 
-        const invData = await invResponse.json();
+      const invData = await invResponse.json();
 
-        if (!invResponse.ok) {
-          console.error(`[Inventory Sync Error] Failed deduction tracking loop for ${item.id}:`, invData.error);
-        } else {
-          console.log(`[Inventory Sync Success]: ${invData.message}`);
-        }
+      if (!invResponse.ok) {
+        console.error(`[Inventory Sync Error] Failed bulk deduction tracking:`, invData.error);
+      } else {
+        console.log(`[Inventory Sync Success]: ${invData.message}`);
       }
 
       // 3. Reset the frontend UI states completely for the next transaction frame
