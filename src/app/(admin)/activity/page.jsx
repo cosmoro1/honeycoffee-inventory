@@ -11,16 +11,23 @@ export default function ActivityPage() {
   useEffect(() => {
     fetch("/api/activity-logs", { cache: "no-store" })
       .then((r) => r.json())
-      .then(setLogs)
+      .then((data) => {
+        // Safe arrays check fallback assignment
+        setLogs(Array.isArray(data) ? data : []);
+      })
       .catch(console.error);
   }, []);
 
-  // Filter types mapping based on your DB log entry 'type' column strings
+  // Filter types mapping with explicit string existence checks to prevent rendering crashes
   const filteredLogs = logs.filter((log) => {
-    if (activeFilter === "All") return true;
-    if (activeFilter === "Orders") return log.type.toLowerCase() === "order";
-    if (activeFilter === "Invoices") return log.type.toLowerCase() === "invoice";
-    if (activeFilter === "System") return log.type.toLowerCase() === "system";
+    if (!log || activeFilter === "All") return true;
+    
+    // Fallback assignment check if a log type is completely missing or null in the row
+    const logType = log.type ? String(log.type).toLowerCase().trim() : "";
+
+    if (activeFilter === "Orders") return logType === "order";
+    if (activeFilter === "Invoices") return logType === "invoice";
+    if (activeFilter === "System") return logType === "system";
     return true;
   });
 
@@ -52,7 +59,11 @@ export default function ActivityPage() {
       </div>
 
       {/* Rendered Timeline Feed */}
-      <ActivityTimeline logs={filteredLogs} />
+      {filteredLogs.length > 0 ? (
+        <ActivityTimeline logs={filteredLogs} />
+      ) : (
+        <p className="text-sm text-neutral-500 italic pl-2 pt-4">No active records found matching this category filter.</p>
+      )}
     </div>
   );
 }
