@@ -53,7 +53,7 @@ export async function POST(request) {
             [totalDeduction, ingredient.inventory_item]
           );
 
-          // 2. Adjust live tracking health thresholds (OK, Low, Critical)
+          // 2. Adjust live tracking health thresholds (OK, Low, Critical, Out of Stock)
           await pool.query(
             `UPDATE inventory 
              SET status = CASE 
@@ -71,12 +71,13 @@ export async function POST(request) {
 
     // 🚚 B. BUNDLED RESTOCK MANAGER (Runs sequentially after all updates are finished)
     try {
-      // 1. Scan the database to grab ALL items that are currently low or critical
+      // Grab ALL items that are currently low, critical, or completely out of stock
       const [lowStockItems] = await pool.query(
-        "SELECT item, current_stock, unit FROM inventory WHERE status = 'Low Stock' OR status = 'Critical'"
+        `SELECT item, current_stock, unit FROM inventory 
+         WHERE status = 'Low Stock' OR status = 'Critical' OR status = 'Out of Stock'`
       );
 
-      // Gatekeeper: If nothing is low, stop completely.
+      // Gatekeeper: If nothing is low or depleted, stop completely.
       if (lowStockItems && lowStockItems.length > 0) {
         
         // Anti-spam duplicate filter: Check if any of these low items were already ordered today
@@ -89,7 +90,7 @@ export async function POST(request) {
           if (recentOrders.length === 0) filteredItems.push(stockItem);
         }
 
-        // Only proceed if there are low items that haven't been ordered in the last 24 hours
+        // Only proceed if there are items that haven't been ordered in the last 24 hours
         if (filteredItems.length > 0) {
           const now = new Date();
           const date6Char = now.toISOString().slice(2, 10).replace(/-/g, "");
@@ -112,7 +113,7 @@ export async function POST(request) {
 
           let itemLogNames = [];
 
-          // Add ALL qualifying low stock items into this single purchase order loop body
+          // Add ALL qualifying low/depleted stock items into this single purchase order loop body
           filteredItems.forEach((lowItem, index) => {
             const itemCode = lowItem.item.toUpperCase().replace(/\s+/g, "-");
             const databaseUnit = lowItem.unit.toLowerCase().trim();
@@ -135,7 +136,7 @@ export async function POST(request) {
           bodySegments.push(`CTT*${filteredItems.length}`, `SE*${bodySegments.length + 1}*0001`);
           const fullX12Payload = `${isa}${gs}${bodySegments.join("~\n")}~\nGE*1*1~\nIEA*1*${controlNum}~\n`;
 
-          // Transmit the single bundled payload
+          // Transmit the single bundled payload containing all line items
           const supplierRes = await fetch("https://sermacrops-repo.onrender.com/api/edi/inbound", {
             method: "POST",
             headers: { 
