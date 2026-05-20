@@ -10,6 +10,7 @@ import { CustomerSearchBar } from "@/components/customer/CustomerSearchBar";
 import { FeaturedPanel } from "@/components/customer/FeaturedPanel";
 import { ProductCard } from "@/components/customer/ProductCard";
 import { ThemeToggle } from "@/components/ui/ThemeToggle";
+import { TapatDiscountModal } from "@/components/tapat/TapatDiscountModal";
 
 function generatePickupNumber() {
   const sequence = String(Math.floor(1000 + Math.random() * 9000));
@@ -25,6 +26,8 @@ export default function CustomerLandingPage() {
   const [products, setProducts]                 = useState([]);
   const [categories, setCategories]             = useState(["All"]);
   const [loading, setLoading]                   = useState(true);
+  const [tapatResult, setTapatResult]           = useState(null);
+  const [tapatOpen, setTapatOpen]               = useState(false);
 
   useEffect(() => {
     setPickupNumber(generatePickupNumber());
@@ -54,6 +57,7 @@ export default function CustomerLandingPage() {
 
   function handleAdd(product) {
     setOrderMessage("");
+    setTapatResult(null);
     setCartItems((currentItems) => {
       const existingItem = currentItems.find((item) => item.id === product.id);
       if (existingItem) {
@@ -66,6 +70,7 @@ export default function CustomerLandingPage() {
   }
 
   function handleIncrease(productId) {
+    setTapatResult(null);
     setCartItems((currentItems) =>
       currentItems.map((item) =>
         item.id === productId ? { ...item, quantity: item.quantity + 1 } : item
@@ -74,6 +79,7 @@ export default function CustomerLandingPage() {
   }
 
   function handleDecrease(productId) {
+    setTapatResult(null);
     setCartItems((currentItems) =>
       currentItems
         .map((item) => (item.id === productId ? { ...item, quantity: item.quantity - 1 } : item))
@@ -82,7 +88,18 @@ export default function CustomerLandingPage() {
   }
 
   function handleRemove(productId) {
+    setTapatResult(null);
     setCartItems((currentItems) => currentItems.filter((item) => item.id !== productId));
+  }
+
+  function handleApplyTapat(result) {
+    setTapatResult(result);
+    setTapatOpen(false);
+  }
+
+  function handleClearTapat() {
+    setTapatResult(null);
+    setTapatOpen(false);
   }
 
   async function handleCheckout() {
@@ -91,12 +108,15 @@ export default function CustomerLandingPage() {
       return;
     }
 
-    const totalAmount = cartItems.reduce((sum, item) => {
+    const grossAmount = cartItems.reduce((sum, item) => {
       const price = typeof item.price === "string"
         ? parseFloat(item.price.replace(/[^0-9.]/g, ""))
         : Number(item.price);
       return sum + price * item.quantity;
     }, 0);
+
+    const tapatApproved = Boolean(tapatResult?.approved && tapatResult?.discount);
+    const totalAmount = tapatApproved ? tapatResult.discount.net_total : grossAmount;
 
     try {
       // 1. Log the customer order history record
@@ -105,6 +125,17 @@ export default function CustomerLandingPage() {
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify({ pickupNumber, items: cartItems, totalAmount }),
       });
+
+      // 1b. If a TAPAT card was applied, post the EDI 826 transaction back to the Hub
+      if (tapatApproved) {
+        fetch("/api/tapat/transaction", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ result: tapatResult, pickupNumber }),
+        }).catch((err) =>
+          console.warn("TAPAT 826 transaction post failed:", err.message)
+        );
+      }
 
       console.log("Customer order log saved. Parsing product recipe ingredient deductions...");
 
@@ -130,6 +161,7 @@ export default function CustomerLandingPage() {
 
       // 3. Reset the frontend UI states completely for the next transaction frame
       setCartItems([]);
+      setTapatResult(null);
       setOrderMessage(`Pickup number ${pickupNumber} is ready. Please proceed to the counter.`);
       
     } catch (err) {
@@ -247,13 +279,25 @@ export default function CustomerLandingPage() {
             items={cartItems}
             fallbackProducts={products.slice(0, 3)}
             message={orderMessage}
+            tapatResult={tapatResult}
             onIncrease={handleIncrease}
             onDecrease={handleDecrease}
             onRemove={handleRemove}
             onCheckout={handleCheckout}
+            onOpenTapat={() => setTapatOpen(true)}
           />
         </section>
       </div>
+
+      {tapatOpen ? (
+        <TapatDiscountModal
+          cart={cartItems}
+          currentResult={tapatResult}
+          onApply={handleApplyTapat}
+          onClear={handleClearTapat}
+          onClose={() => setTapatOpen(false)}
+        />
+      ) : null}
     </main>
   );
 }
