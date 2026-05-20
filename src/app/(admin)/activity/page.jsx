@@ -12,22 +12,21 @@ export default function ActivityPage() {
     fetch("/api/activity-logs", { cache: "no-store" })
       .then((r) => r.json())
       .then((data) => {
-        // Safe arrays check fallback assignment
         setLogs(Array.isArray(data) ? data : []);
       })
       .catch(console.error);
   }, []);
 
-  
+  // Filter types using log.title since the backend aliases the 'type' column
   const filteredLogs = logs.filter((log) => {
     if (!log || activeFilter === "All") return true;
     
-    const logType = log.type ? String(log.type).toLowerCase().trim() : "";
+    // Read from title since the API renames type -> title
+    const logType = log.title ? String(log.title).toLowerCase().trim() : "";
 
-    // This handles both "order" and "orders", "invoice" and "invoices", etc.
     if (activeFilter === "Orders") return logType.includes("order");
     if (activeFilter === "Invoices") return logType.includes("invoice");
-    if (activeFilter === "System") return logType.includes("system");
+    if (activeFilter === "System") return logType.includes("system") || logType === "alert";
     
     return true;
   });
@@ -63,7 +62,9 @@ export default function ActivityPage() {
       {filteredLogs.length > 0 ? (
         <ActivityTimeline logs={filteredLogs} />
       ) : (
-        <p className="text-sm text-neutral-500 italic pl-2 pt-4">No active records found matching this category filter.</p>
+        <p className="text-sm text-neutral-500 italic pl-2 pt-4">
+          No active records found matching the "{activeFilter}" filter selection.
+        </p>
       )}
     </div>
   );
