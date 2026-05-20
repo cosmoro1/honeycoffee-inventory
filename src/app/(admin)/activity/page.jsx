@@ -63,7 +63,7 @@ export default function ActivityPage() {
         <ActivityTimeline logs={filteredLogs} />
       ) : (
         <p className="text-sm text-neutral-500 italic pl-2 pt-4">
-          No active records found matching the "{activeFilter}" filter selection.
+          No active records found matching the &quot;{activeFilter}&quot; filter selection.
         </p>
       )}
     </div>
