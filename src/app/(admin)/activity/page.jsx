@@ -23,15 +23,22 @@ export default function ActivityPage() {
     
     // Read from title since the API renames type -> title
     const logType = log.title ? String(log.title).toLowerCase().trim() : "";
+    const docType = log.edi_doc_type ? String(log.edi_doc_type).trim() : "";
 
     if (activeFilter === "Orders") return logType.includes("order");
     if (activeFilter === "Invoices") return logType.includes("invoice");
     if (activeFilter === "System") return logType.includes("system") || logType === "alert";
     
+    // 🚚 Delivery Filter Condition: catches text descriptions or EDI 856 documents
+    if (activeFilter === "Deliveries") {
+      return logType.includes("delivery") || logType.includes("shipment") || docType === "856";
+    }
+    
     return true;
   });
 
-  const filters = ["All", "Orders", "Invoices", "System"];
+  // Added "Deliveries" to your master filters line
+  const filters = ["All", "Orders", "Invoices", "Deliveries", "System"];
 
   return (
     <div className="space-y-5">
