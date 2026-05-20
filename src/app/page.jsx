@@ -139,11 +139,17 @@ export default function CustomerLandingPage() {
 
       console.log("Customer order log saved. Parsing product recipe ingredient deductions...");
 
-      // 2. Bulk inventory recipe update and single EDI restock trigger
+      // 2. Map the cart array to strictly send only the keys the database expects
+      const bulkPayload = cartItems.map((item) => ({
+        productId: item.id,
+        quantitySold: item.quantity,
+      }));
+
+      // 3. Bulk inventory recipe update and single EDI restock trigger
       const invResponse = await fetch("/api/inventory", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(cartItems), // Sends the whole cart array at once
+        body: JSON.stringify(bulkPayload), // Sends the cleaned array
       });
 
       const invData = await invResponse.json();
@@ -154,7 +160,7 @@ export default function CustomerLandingPage() {
         console.log(`[Inventory Sync Success]: ${invData.message}`);
       }
 
-      // 3. Reset the frontend UI states completely for the next transaction frame
+      // 4. Reset the frontend UI states completely for the next transaction frame
       setCartItems([]);
       setTapatResult(null);
       setOrderMessage(`Pickup number ${pickupNumber} is ready. Please proceed to the counter.`);
