@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import {
+  dispatchSermacrops861,
+  getReceiptSourceByPoNumber,
+} from "@/lib/edi/sermacrops";
 
 export async function POST(request) {
   try {
@@ -22,11 +26,14 @@ export async function POST(request) {
       return NextResponse.json({ error: "Missing EDI content" }, { status: 400 });
     }
 
-    let ediType = "Unknown";
+    let functionalGroup = null;
+    let transactionSetId = null;
     let poNumber = null;
     let logType = "System";
     let logMessage = "Received inbound EDI document.";
     let orderStatus = null;
+    let shipmentReference = null;
+    let shipmentStatusCode = null;
 
     // Item-tracking state arrays for multi-segment loops
     let parsedItems = [];
@@ -38,7 +45,10 @@ export async function POST(request) {
 
       if (line.startsWith("GS*")) {
         const segments = line.split("*");
-        ediType = segments[1];
+        functionalGroup = segments[1];
+      } else if (line.startsWith("ST*")) {
+        const segments = line.split("*");
+        transactionSetId = segments[1];
       } else if (line.startsWith("BEG*")) {
         const segments = line.split("*");
         poNumber = segments[3];
@@ -59,6 +69,34 @@ export async function POST(request) {
       else if (line.startsWith("BIG*")) {
         const segments = line.split("*");
         if (segments[4]) poNumber = segments[4];
+      }
+      else if (line.startsWith("B10*")) {
+        const segments = line.split("*");
+        shipmentReference = segments[2] || segments[1] || shipmentReference;
+      }
+      else if (line.startsWith("L11*")) {
+        const segments = line.split("*");
+        const qualifier = segments[2];
+        if (!shipmentReference && segments[1]) {
+          shipmentReference = segments[1];
+        }
+        if (!poNumber && ["PO", "ON", "OID"].includes(qualifier) && segments[1]) {
+          poNumber = segments[1];
+        }
+      }
+      else if (line.startsWith("REF*")) {
+        const segments = line.split("*");
+        const qualifier = segments[1];
+        if (!poNumber && ["PO", "ON", "BM"].includes(qualifier) && segments[2]) {
+          poNumber = segments[2];
+        }
+        if (!shipmentReference && segments[2]) {
+          shipmentReference = segments[2];
+        }
+      }
+      else if (line.startsWith("AT7*")) {
+        const segments = line.split("*");
+        shipmentStatusCode = segments[1] || segments[2] || shipmentStatusCode;
       }
       
       // Extract Item Part Numbers/SKUs (LIN segment loops)
@@ -89,6 +127,8 @@ export async function POST(request) {
         }
       }
     }
+
+    const ediType = transactionSetId || functionalGroup || "Unknown";
 
     const now = new Date();
     const utcTime = now.getTime() + (now.getTimezoneOffset() * 60000);
@@ -145,6 +185,60 @@ export async function POST(request) {
         } catch (dbErr) {
           console.warn(`[Inbound Webhook Warning] Could not sync invoice processing status for ${poNumber}:`, dbErr.message);
         }
+      }
+    }
+    else if (ediType === "214" || ediType === "QM") {
+      logType = "Delivery";
+
+      const receiptSource = poNumber
+        ? await getReceiptSourceByPoNumber(poNumber).catch(() => null)
+        : null;
+
+      const shouldDispatch861 = Boolean(poNumber && (receiptSource?.items || parsedItems.length > 0));
+
+      logMessage = `Logistics EDI 214 received for Order ${poNumber || "N/A"}${shipmentReference ? ` (Shipment ${shipmentReference})` : ""}.${shipmentStatusCode ? ` Status: ${shipmentStatusCode}.` : ""}`;
+
+      if (poNumber) {
+        try {
+          await pool.query("UPDATE edi_orders SET status = 'Delivered', updated_at = ? WHERE po_number = ?", [mysqlTimestamp, poNumber]);
+        } catch (dbErr) {
+          console.warn(`[Inbound Webhook Warning] Could not sync delivered status for ${poNumber}:`, dbErr.message);
+        }
+      }
+
+      if (shouldDispatch861) {
+        try {
+          const dispatchResult = await dispatchSermacrops861({
+            poNumber,
+            shipmentReference,
+            receiptDate: now,
+            itemsText: receiptSource?.items || itemsString,
+            totalQuantity: receiptSource?.quantity,
+            logisticsStatusCode: shipmentStatusCode,
+          });
+
+          await pool.query(
+            "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [
+              "Delivery",
+              poNumber,
+              `Outbound EDI 861 ${dispatchResult.receiptNumber} sent to Sermacrops after logistics 214 for Order ${poNumber}.`,
+              dispatchResult.ok ? "OK" : "Error",
+              mysqlTimestamp,
+              "861",
+              dispatchResult.payload,
+            ]
+          );
+
+          logMessage += dispatchResult.ok
+            ? ` Receipt advice ${dispatchResult.receiptNumber} sent to Sermacrops.`
+            : ` Receipt advice send failed with supplier status ${dispatchResult.status}.`;
+        } catch (dispatchErr) {
+          console.warn(`[Inbound Webhook Warning] Could not dispatch 861 for ${poNumber}:`, dispatchErr.message);
+          logMessage += " Receipt advice was not sent because the local order could not be resolved into receivable line items.";
+        }
+      } else {
+        logMessage += " Receipt advice was skipped because no receivable line items were found for this order.";
       }
     }
 

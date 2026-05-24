@@ -12,6 +12,7 @@ const FUNCTIONAL_GROUPS = {
   "850": "PO",
   "856": "SH",
   "810": "IN",
+  "861": "RC",
 };
 
 let _counter = 0;
