@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import {
+  buildSermacrops861,
   dispatchSermacrops861,
   getReceiptSourceByPoNumber,
 } from "@/lib/edi/sermacrops";
@@ -214,15 +215,17 @@ export async function POST(request) {
       }
 
       if (shouldDispatch861) {
+        const outbound861Args = {
+          poNumber,
+          shipmentReference,
+          receiptDate: now,
+          itemsText: receiptSource?.items || itemsString,
+          totalQuantity: receiptSource?.quantity || 1,
+          logisticsStatusCode: shipmentStatusCode,
+        };
+
         try {
-          const dispatchResult = await dispatchSermacrops861({
-            poNumber,
-            shipmentReference,
-            receiptDate: now,
-            itemsText: receiptSource?.items || itemsString,
-            totalQuantity: receiptSource?.quantity || 1,
-            logisticsStatusCode: shipmentStatusCode,
-          });
+          const dispatchResult = await dispatchSermacrops861(outbound861Args);
 
           await pool.query(
             "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -242,7 +245,27 @@ export async function POST(request) {
             : ` Receipt advice send failed with supplier status ${dispatchResult.status}.`;
         } catch (dispatchErr) {
           console.warn(`[Inbound Webhook Warning] Could not dispatch 861 for ${poNumber}:`, dispatchErr.message);
-          logMessage += " Receipt advice was not sent because the outbound 861 dispatch failed.";
+
+          try {
+            const failedReceipt = buildSermacrops861(outbound861Args);
+
+            await pool.query(
+              "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
+              [
+                "Receipt Advice",
+                poNumber,
+                `Outbound EDI 861 ${failedReceipt.receiptNumber} attempted for Sermacrops after logistics 214 for Order ${poNumber}, but the dispatch returned an error.`,
+                "Error",
+                mysqlTimestamp,
+                "861",
+                failedReceipt.payload,
+              ]
+            );
+          } catch (logErr) {
+            console.warn(`[Inbound Webhook Warning] Could not log failed 861 attempt for ${poNumber}:`, logErr.message);
+          }
+
+          logMessage += " Receipt advice dispatch was attempted and logged, but the outbound 861 request returned an error.";
         }
       } else {
         logMessage += " Receipt advice was skipped because no purchase-order reference could be resolved from the 214 payload.";

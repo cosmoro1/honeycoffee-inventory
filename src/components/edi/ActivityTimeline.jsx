@@ -31,6 +31,13 @@ export function ActivityTimeline({ logs }) {
             const currentType = getDisplayType(log);
             const currentMessage = log.description || log.message || "";
             const currentTime = log.time || log.created_at || "—";
+            const status = String(log.status || "OK");
+            const statusClasses =
+              status === "Pending"
+                ? "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border-amber-500/20"
+                : status === "Error"
+                  ? "bg-red-500/10 text-red-600 dark:bg-red-500/20 dark:text-red-400 border-red-500/20"
+                  : "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border-emerald-500/20";
 
             return (
               <div
@@ -54,12 +61,8 @@ export function ActivityTimeline({ logs }) {
                   <span className="text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
                     {currentTime}
                   </span>
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${
-                    log.status === "Pending" 
-                      ? "bg-amber-500/10 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400 border-amber-500/20"
-                      : "bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 border-emerald-500/20"
-                  }`}>
-                    {log.status || "OK"}
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${statusClasses}`}>
+                    {status}
                   </span>
                 </div>
               </div>
@@ -153,7 +156,13 @@ export function ActivityTimeline({ logs }) {
                   <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
                     Status Flag
                   </p>
-                  <span className={`text-xs font-bold block mt-0.5 ${selectedLog.status === "Pending" ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+                  <span className={`text-xs font-bold block mt-0.5 ${
+                    selectedLog.status === "Pending"
+                      ? "text-amber-600 dark:text-amber-400"
+                      : selectedLog.status === "Error"
+                        ? "text-red-600 dark:text-red-400"
+                        : "text-emerald-600 dark:text-emerald-400"
+                  }`}>
                     {selectedLog.status || "OK"}
                   </span>
                 </div>
