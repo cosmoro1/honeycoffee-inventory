@@ -108,7 +108,20 @@ function parseItemsString(itemsText, totalQuantity) {
 
 function normalizeItems(items, fallbackItemsText, fallbackTotalQuantity) {
   if (!Array.isArray(items) || items.length === 0) {
-    return parseItemsString(fallbackItemsText, fallbackTotalQuantity);
+    const parsedFallback = parseItemsString(fallbackItemsText, fallbackTotalQuantity);
+
+    if (parsedFallback.length > 0) {
+      return parsedFallback;
+    }
+
+    return [
+      {
+        description: "RECEIVED-GOODS",
+        itemCode: "RECEIVED-GOODS",
+        quantityAccepted: Number(fallbackTotalQuantity || 1) > 0 ? Number(fallbackTotalQuantity || 1) : 1,
+        unit: "EA",
+      },
+    ];
   }
 
   return items

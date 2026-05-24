@@ -72,6 +72,9 @@ export async function POST(request) {
       }
       else if (line.startsWith("B10*")) {
         const segments = line.split("*");
+        if (!poNumber && segments[1]) {
+          poNumber = segments[1];
+        }
         shipmentReference = segments[2] || segments[1] || shipmentReference;
       }
       else if (line.startsWith("L11*")) {
@@ -80,7 +83,7 @@ export async function POST(request) {
         if (!shipmentReference && segments[1]) {
           shipmentReference = segments[1];
         }
-        if (!poNumber && ["PO", "ON", "OID"].includes(qualifier) && segments[1]) {
+        if (!poNumber && ["PO", "ON", "OID", "SI"].includes(qualifier) && segments[1]) {
           poNumber = segments[1];
         }
       }
@@ -194,7 +197,11 @@ export async function POST(request) {
         ? await getReceiptSourceByPoNumber(poNumber).catch(() => null)
         : null;
 
-      const shouldDispatch861 = Boolean(poNumber && (receiptSource?.items || parsedItems.length > 0));
+      if (!poNumber && shipmentReference) {
+        poNumber = shipmentReference;
+      }
+
+      const shouldDispatch861 = Boolean(poNumber);
 
       logMessage = `Logistics EDI 214 received for Order ${poNumber || "N/A"}${shipmentReference ? ` (Shipment ${shipmentReference})` : ""}.${shipmentStatusCode ? ` Status: ${shipmentStatusCode}.` : ""}`;
 
@@ -213,7 +220,7 @@ export async function POST(request) {
             shipmentReference,
             receiptDate: now,
             itemsText: receiptSource?.items || itemsString,
-            totalQuantity: receiptSource?.quantity,
+            totalQuantity: receiptSource?.quantity || 1,
             logisticsStatusCode: shipmentStatusCode,
           });
 
@@ -235,10 +242,10 @@ export async function POST(request) {
             : ` Receipt advice send failed with supplier status ${dispatchResult.status}.`;
         } catch (dispatchErr) {
           console.warn(`[Inbound Webhook Warning] Could not dispatch 861 for ${poNumber}:`, dispatchErr.message);
-          logMessage += " Receipt advice was not sent because the local order could not be resolved into receivable line items.";
+          logMessage += " Receipt advice was not sent because the outbound 861 dispatch failed.";
         }
       } else {
-        logMessage += " Receipt advice was skipped because no receivable line items were found for this order.";
+        logMessage += " Receipt advice was skipped because no purchase-order reference could be resolved from the 214 payload.";
       }
     }
 
