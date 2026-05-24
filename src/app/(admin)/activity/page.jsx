@@ -29,9 +29,15 @@ export default function ActivityPage() {
     if (activeFilter === "Invoices") return logType.includes("invoice");
     if (activeFilter === "System") return logType.includes("system") || logType === "alert";
     
-    // 🚚 Delivery Filter Condition: catches text descriptions or EDI 856 documents
+    // Delivery filter includes logistics receipts and outbound 861 acknowledgements.
     if (activeFilter === "Deliveries") {
-      return logType.includes("delivery") || logType.includes("shipment") || docType === "856";
+      return (
+        logType.includes("delivery") ||
+        logType.includes("shipment") ||
+        logType.includes("receipt") ||
+        docType === "856" ||
+        docType === "861"
+      );
     }
     
     return true;

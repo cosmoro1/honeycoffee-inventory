@@ -1,5 +1,25 @@
 import { useState } from "react";
 
+function getDisplayType(log) {
+  const docType = String(log?.edi_doc_type || "").trim();
+  const message = String(log?.description || log?.message || "").toLowerCase();
+
+  if (docType === "861" || message.includes("outbound edi 861")) {
+    return "Receipt Advice";
+  }
+
+  return log?.title || log?.type || "System";
+}
+
+function getDisplayReference(log) {
+  if (log?.reference) {
+    return log.reference;
+  }
+
+  const message = String(log?.description || log?.message || "");
+  return message.match(/(PO\d+|PO-\d+|BREW-\d+|DEL-\d+|INV-\d+)/)?.[0] || "N/A";
+}
+
 export function ActivityTimeline({ logs }) {
   const [selectedLog, setSelectedLog] = useState(null);
 
@@ -8,7 +28,7 @@ export function ActivityTimeline({ logs }) {
       <div className="flex-1 space-y-4 overflow-y-auto max-h-[450px] pr-1">
         {logs && logs.length > 0 ? (
           logs.map((log) => {
-            const currentType = log.title || log.type || "System";
+            const currentType = getDisplayType(log);
             const currentMessage = log.description || log.message || "";
             const currentTime = log.time || log.created_at || "—";
 
@@ -64,7 +84,7 @@ export function ActivityTimeline({ logs }) {
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3 mb-4">
               <div>
                 <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400 rounded border border-emerald-500/20">
-                  {selectedLog.title || selectedLog.type || "System"} Log
+                  {getDisplayType(selectedLog)} Log
                 </span>
                 <h3 className="text-base font-bold mt-1.5">EDI Action Details</h3>
               </div>
@@ -82,7 +102,7 @@ export function ActivityTimeline({ logs }) {
                   Reference Info / Context
                 </p>
                 <p className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
-                  {(selectedLog.description || selectedLog.message || "").match(/(PO-\d+|BREW-\d+|DEL-\d+|INV-\d+)/)?.[0] || "N/A"}
+                  {getDisplayReference(selectedLog)}
                 </p>
               </div>
 
