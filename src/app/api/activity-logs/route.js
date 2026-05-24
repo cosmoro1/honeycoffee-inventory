@@ -7,17 +7,17 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const [rows] = await pool.query(
-      `SELECT
-         id,
-         type                                              AS title,
-         reference,
-         message                                           AS description,
-         DATE_FORMAT(created_at, '%h:%i %p')               AS time,
-         status,
-         edi_doc_type,
-         raw_payload
+       `SELECT
+          id,
+          type                                              AS title,
+          reference,
+          message                                           AS description,
+          DATE_FORMAT(created_at, '%h:%i %p')               AS time,
+          status,
+          edi_doc_type,
+          raw_payload
        FROM activity_logs
-       ORDER BY created_at DESC
+       ORDER BY created_at DESC, id DESC
        LIMIT 50`
     );
     return NextResponse.json(rows);
