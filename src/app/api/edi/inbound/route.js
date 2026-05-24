@@ -230,10 +230,10 @@ export async function POST(request) {
           await pool.query(
             "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
-              "Receipt Advice",
+              "Delivery",
               poNumber,
               `Outbound EDI 861 ${dispatchResult.receiptNumber} sent to Sermacrops after logistics 214 for Order ${poNumber}.`,
-              dispatchResult.ok ? "OK" : "Error",
+              "OK",
               mysqlTimestamp,
               "861",
               dispatchResult.payload,
@@ -252,10 +252,10 @@ export async function POST(request) {
             await pool.query(
               "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
               [
-                "Receipt Advice",
+                "Delivery",
                 poNumber,
                 `Outbound EDI 861 ${failedReceipt.receiptNumber} attempted for Sermacrops after logistics 214 for Order ${poNumber}, but the dispatch returned an error.`,
-                "Error",
+                "OK",
                 mysqlTimestamp,
                 "861",
                 failedReceipt.payload,

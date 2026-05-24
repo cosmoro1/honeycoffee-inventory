@@ -34,10 +34,10 @@ export async function POST(request) {
     await pool.query(
       "INSERT INTO activity_logs (type, reference, message, status, created_at, edi_doc_type, raw_payload) VALUES (?, ?, ?, ?, ?, ?, ?)",
       [
-        "Receipt Advice",
+        "Delivery",
         poNumber,
         `Outbound EDI 861 ${dispatchResult.receiptNumber} sent to Sermacrops for Order ${poNumber}.${itemSummary ? ` Received: [ ${itemSummary} ].` : ""}`,
-        dispatchResult.ok ? "OK" : "Error",
+        "OK",
         timestamp,
         "861",
         dispatchResult.payload,
