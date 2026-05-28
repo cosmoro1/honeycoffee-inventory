@@ -1,4 +1,7 @@
+"use client";
+
 import { useState } from "react";
+import { Terminal, ChevronDown, ChevronUp } from "lucide-react"; // Imported clean indicators
 
 function getDisplayType(log) {
   const docType = String(log?.edi_doc_type || "").trim();
@@ -22,6 +25,13 @@ function getDisplayReference(log) {
 
 export function ActivityTimeline({ logs }) {
   const [selectedLog, setSelectedLog] = useState(null);
+  const [showRawPayload, setShowRawPayload] = useState(false); // 🌟 Toggles the terminal segment view state
+
+  // Reset the toggle switch state cleanly whenever a user clicks out or opens a different line row
+  const handleCloseModal = () => {
+    setSelectedLog(null);
+    setShowRawPayload(false);
+  };
 
   return (
     <div className="flex flex-col h-full rounded-lg border border-slate-200 bg-white p-5 shadow-soft dark:border-white/10 dark:bg-white/5">
@@ -42,7 +52,10 @@ export function ActivityTimeline({ logs }) {
             return (
               <div
                 key={log.id}
-                onClick={() => setSelectedLog(log)}
+                onClick={() => {
+                  setSelectedLog(log);
+                  setShowRawPayload(false); // Default to closed on newly opened modal profiles
+                }}
                 className="flex items-start justify-between p-3 rounded-xl transition-all duration-200 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer group active:scale-[0.99]"
               >
                 <div className="flex gap-3">
@@ -78,10 +91,10 @@ export function ActivityTimeline({ logs }) {
       {selectedLog && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm transition-opacity"
-          onClick={() => setSelectedLog(null)}
+          onClick={handleCloseModal}
         >
           <div
-            className="w-full max-w-md p-6 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-2xl text-slate-900 dark:text-white shadow-2xl relative transition-transform transform scale-100"
+            className="w-full max-w-md p-6 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-white/10 rounded-2xl text-slate-900 dark:text-white shadow-2xl relative transition-all duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-white/10 pb-3 mb-4">
@@ -92,7 +105,7 @@ export function ActivityTimeline({ logs }) {
                 <h3 className="text-base font-bold mt-1.5">EDI Action Details</h3>
               </div>
               <button
-                onClick={() => setSelectedLog(null)}
+                onClick={handleCloseModal}
                 className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors text-sm font-medium p-1"
               >
                 ✕
@@ -118,28 +131,39 @@ export function ActivityTimeline({ logs }) {
                 </p>
               </div>
 
-              {/* EDI Document Type & Raw Payload Viewer Terminal Block */}
+              {/* 🌟 NEW: Premium Interactive Raw X12 Document Toggle Controller Button Option */}
               {selectedLog.raw_payload && (
-                <div>
-                  <div className="flex items-center justify-between mt-2 mb-1">
-                    <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                      Raw X12 Payload
-                    </p>
-                    <span className="text-[10px] font-bold px-2 py-0.5 bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 rounded border border-blue-500/20">
-                      EDI {selectedLog.edi_doc_type || "Unknown"}
-                    </span>
-                  </div>
-                  <div className="bg-[#0d1117] border border-slate-700 rounded-xl overflow-hidden shadow-inner">
-                    <div className="bg-slate-800/50 px-3 py-1.5 border-b border-slate-700 flex items-center gap-2">
-                      <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
-                      <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
-                      <div className="w-2.5 h-2.5 rounded-full bg-slate-600"></div>
-                      <span className="text-[10px] text-slate-400 ml-2 font-mono">payload.x12</span>
+                <div className="border border-slate-100 dark:border-white/5 rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setShowRawPayload(!showRawPayload)}
+                    className="w-full flex items-center justify-between p-3 text-xs font-semibold bg-slate-50 hover:bg-slate-100 dark:bg-white/5 dark:hover:bg-white/10 transition-colors text-slate-700 dark:text-slate-300"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Terminal size={14} className="text-emerald-500" />
+                      <span>View Raw X12 Payload</span>
+                      <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 ml-1">
+                        EDI {selectedLog.edi_doc_type || "Unknown"}
+                      </span>
                     </div>
-                    <pre className="p-3 overflow-x-auto text-[11px] leading-relaxed text-emerald-400 font-mono whitespace-pre-wrap max-h-[150px] overflow-y-auto custom-scrollbar">
-                      {selectedLog.raw_payload}
-                    </pre>
-                  </div>
+                    {showRawPayload ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+
+                  {/* Collapsible Animation Code Block Wrapper */}
+                  {showRawPayload && (
+                    <div className="bg-[#0d1117] border-t border-slate-700/60 shadow-inner transition-all duration-200">
+                      <div className="bg-slate-800/40 px-3 py-1.5 border-b border-slate-700/60 flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-red-500/70" />
+                          <div className="w-2 h-2 rounded-full bg-amber-500/70" />
+                          <div className="w-2 h-2 rounded-full bg-emerald-500/70" />
+                          <span className="text-[10px] text-slate-400 ml-1.5 font-mono">payload.x12</span>
+                        </div>
+                      </div>
+                      <pre className="p-3 overflow-x-auto text-[11px] leading-relaxed text-emerald-400 font-mono whitespace-pre-wrap max-h-[160px] overflow-y-auto custom-scrollbar">
+                        {selectedLog.raw_payload}
+                      </pre>
+                    </div>
+                  )}
                 </div>
               )}
 
