@@ -23,23 +23,32 @@ function getDisplayReference(log) {
   return message.match(/(PO\d+|PO-\d+|BREW-\d+|DEL-\d+|INV-\d+)/)?.[0] || "N/A";
 }
 
-// 🗓️ Helper function to format any standard date/timestamp cleanly for your logs
+// 🗓️ Upgraded helper function to perfectly parse and format date strings from your database
 function formatLogDateTime(rawDateString) {
   if (!rawDateString || rawDateString === "—") return "—";
   
-  try {
-    const dateObj = new Date(rawDateString);
-    // If the date string isn't standard ISO, fallback to returning the raw string safely
-    if (isNaN(dateObj.getTime())) return rawDateString;
+  // If the backend already sent a pre-formatted date with month names (e.g., "May 20"), use it directly
+  if (/[a-zA-Z]/.test(rawDateString) && rawDateString.includes(":")) {
+    return rawDateString;
+  }
 
-    return dateObj.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: true
-    });
+  try {
+    // Handle standard MySQL datetime formats (e.g., "2026-05-28 15:21:00") cleanly
+    const formattedString = rawDateString.replace("T", " ").replace(/\.\d+Z$/, "");
+    const dateObj = new Date(formattedString);
+    
+    if (!isNaN(dateObj.getTime())) {
+      return dateObj.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+      });
+    }
+    
+    return rawDateString;
   } catch (e) {
     return rawDateString;
   }
@@ -62,7 +71,7 @@ export function ActivityTimeline({ logs }) {
             const currentType = getDisplayType(log);
             const currentMessage = log.description || log.message || "";
             
-            // Prioritize created_at or formatted timeline strings over partial time keys
+            // Prioritize tracking rows using your clean date formatter
             const displayDateTime = formatLogDateTime(log.created_at || log.time || "—");
             
             const status = String(log.status || "OK");
@@ -95,7 +104,6 @@ export function ActivityTimeline({ logs }) {
                 </div>
 
                 <div className="flex items-center gap-3 text-right">
-                  {/* 🗓️ Row Date Display Frame */}
                   <span className="text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
                     {displayDateTime}
                   </span>
@@ -147,7 +155,6 @@ export function ActivityTimeline({ logs }) {
                     {getDisplayReference(selectedLog)}
                   </p>
                 </div>
-                {/* Micro Document Flag Indicator inside card layout header */}
                 <span className="text-xs font-mono px-2 py-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md text-slate-600 dark:text-slate-300">
                   doc: {selectedLog.edi_doc_type || "SYS"}
                 </span>
