@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Terminal, ChevronDown, ChevronUp } from "lucide-react"; // Imported clean indicators
+import { Terminal, ChevronDown, ChevronUp, Calendar } from "lucide-react";
 
 function getDisplayType(log) {
   const docType = String(log?.edi_doc_type || "").trim();
@@ -23,11 +23,32 @@ function getDisplayReference(log) {
   return message.match(/(PO\d+|PO-\d+|BREW-\d+|DEL-\d+|INV-\d+)/)?.[0] || "N/A";
 }
 
+// 🗓️ Helper function to format any standard date/timestamp cleanly for your logs
+function formatLogDateTime(rawDateString) {
+  if (!rawDateString || rawDateString === "—") return "—";
+  
+  try {
+    const dateObj = new Date(rawDateString);
+    // If the date string isn't standard ISO, fallback to returning the raw string safely
+    if (isNaN(dateObj.getTime())) return rawDateString;
+
+    return dateObj.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    });
+  } catch (e) {
+    return rawDateString;
+  }
+}
+
 export function ActivityTimeline({ logs }) {
   const [selectedLog, setSelectedLog] = useState(null);
-  const [showRawPayload, setShowRawPayload] = useState(false); // 🌟 Toggles the terminal segment view state
+  const [showRawPayload, setShowRawPayload] = useState(false);
 
-  // Reset the toggle switch state cleanly whenever a user clicks out or opens a different line row
   const handleCloseModal = () => {
     setSelectedLog(null);
     setShowRawPayload(false);
@@ -40,7 +61,10 @@ export function ActivityTimeline({ logs }) {
           logs.map((log) => {
             const currentType = getDisplayType(log);
             const currentMessage = log.description || log.message || "";
-            const currentTime = log.time || log.created_at || "—";
+            
+            // Prioritize created_at or formatted timeline strings over partial time keys
+            const displayDateTime = formatLogDateTime(log.created_at || log.time || "—");
+            
             const status = String(log.status || "OK");
             const statusClasses =
               status === "Pending"
@@ -54,7 +78,7 @@ export function ActivityTimeline({ logs }) {
                 key={log.id}
                 onClick={() => {
                   setSelectedLog(log);
-                  setShowRawPayload(false); // Default to closed on newly opened modal profiles
+                  setShowRawPayload(false);
                 }}
                 className="flex items-start justify-between p-3 rounded-xl transition-all duration-200 hover:bg-slate-50 dark:hover:bg-white/5 cursor-pointer group active:scale-[0.99]"
               >
@@ -71,8 +95,9 @@ export function ActivityTimeline({ logs }) {
                 </div>
 
                 <div className="flex items-center gap-3 text-right">
+                  {/* 🗓️ Row Date Display Frame */}
                   <span className="text-xs text-slate-400 dark:text-slate-500 whitespace-nowrap">
-                    {currentTime}
+                    {displayDateTime}
                   </span>
                   <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md border ${statusClasses}`}>
                     {status}
@@ -113,13 +138,19 @@ export function ActivityTimeline({ logs }) {
             </div>
 
             <div className="space-y-4 text-sm">
-              <div>
-                <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                  Reference Info / Context
-                </p>
-                <p className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
-                  {getDisplayReference(selectedLog)}
-                </p>
+              <div className="flex justify-between items-center bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5">
+                <div>
+                  <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
+                    Reference Info / Context
+                  </p>
+                  <p className="font-mono text-emerald-600 dark:text-emerald-400 font-semibold mt-0.5">
+                    {getDisplayReference(selectedLog)}
+                  </p>
+                </div>
+                {/* Micro Document Flag Indicator inside card layout header */}
+                <span className="text-xs font-mono px-2 py-1 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md text-slate-600 dark:text-slate-300">
+                  doc: {selectedLog.edi_doc_type || "SYS"}
+                </span>
               </div>
 
               <div>
@@ -131,7 +162,7 @@ export function ActivityTimeline({ logs }) {
                 </p>
               </div>
 
-              {/* 🌟 NEW: Premium Interactive Raw X12 Document Toggle Controller Button Option */}
+              {/* Interactive Raw X12 Toggle Button Option */}
               {selectedLog.raw_payload && (
                 <div className="border border-slate-100 dark:border-white/5 rounded-xl overflow-hidden">
                   <button
@@ -141,14 +172,10 @@ export function ActivityTimeline({ logs }) {
                     <div className="flex items-center gap-2">
                       <Terminal size={14} className="text-emerald-500" />
                       <span>View Raw X12 Payload</span>
-                      <span className="text-[10px] bg-blue-500/10 text-blue-600 dark:bg-blue-500/20 dark:text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 ml-1">
-                        EDI {selectedLog.edi_doc_type || "Unknown"}
-                      </span>
                     </div>
                     {showRawPayload ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                   </button>
 
-                  {/* Collapsible Animation Code Block Wrapper */}
                   {showRawPayload && (
                     <div className="bg-[#0d1117] border-t border-slate-700/60 shadow-inner transition-all duration-200">
                       <div className="bg-slate-800/40 px-3 py-1.5 border-b border-slate-700/60 flex items-center justify-between">
@@ -170,10 +197,11 @@ export function ActivityTimeline({ logs }) {
               <div className="flex justify-between items-center bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-100 dark:border-white/5">
                 <div>
                   <p className="text-xs font-medium text-slate-400 dark:text-slate-500">
-                    Timestamp
+                    Timestamp & Date Context
                   </p>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                    {selectedLog.time || selectedLog.created_at || "—"}
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 font-medium flex items-center gap-1.5">
+                    <Calendar size={13} className="text-slate-400" />
+                    {formatLogDateTime(selectedLog.created_at || selectedLog.time || "—")}
                   </p>
                 </div>
                 <div className="text-right">
