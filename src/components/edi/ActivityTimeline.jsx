@@ -23,37 +23,6 @@ function getDisplayReference(log) {
   return message.match(/(PO\d+|PO-\d+|BREW-\d+|DEL-\d+|INV-\d+)/)?.[0] || "N/A";
 }
 
-// 🗓️ Upgraded helper function to perfectly parse and format date strings from your database
-function formatLogDateTime(rawDateString) {
-  if (!rawDateString || rawDateString === "—") return "—";
-  
-  // If the backend already sent a pre-formatted date with month names (e.g., "May 20"), use it directly
-  if (/[a-zA-Z]/.test(rawDateString) && rawDateString.includes(":")) {
-    return rawDateString;
-  }
-
-  try {
-    // Handle standard MySQL datetime formats (e.g., "2026-05-28 15:21:00") cleanly
-    const formattedString = rawDateString.replace("T", " ").replace(/\.\d+Z$/, "");
-    const dateObj = new Date(formattedString);
-    
-    if (!isNaN(dateObj.getTime())) {
-      return dateObj.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true
-      });
-    }
-    
-    return rawDateString;
-  } catch (e) {
-    return rawDateString;
-  }
-}
-
 export function ActivityTimeline({ logs }) {
   const [selectedLog, setSelectedLog] = useState(null);
   const [showRawPayload, setShowRawPayload] = useState(false);
@@ -71,8 +40,8 @@ export function ActivityTimeline({ logs }) {
             const currentType = getDisplayType(log);
             const currentMessage = log.description || log.message || "";
             
-            // Prioritize tracking rows using your clean date formatter
-            const displayDateTime = formatLogDateTime(log.created_at || log.time || "—");
+            // ✅ Directly uses the full backend DATE_FORMAT string passed through your 'time' alias
+            const displayDateTime = log.time || "—";
             
             const status = String(log.status || "OK");
             const statusClasses =
@@ -208,7 +177,8 @@ export function ActivityTimeline({ logs }) {
                   </p>
                   <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 font-medium flex items-center gap-1.5">
                     <Calendar size={13} className="text-slate-400" />
-                    {formatLogDateTime(selectedLog.created_at || selectedLog.time || "—")}
+                    {/* ✅ Uses the clean database string layout natively directly */}
+                    {selectedLog.time || "—"}
                   </p>
                 </div>
                 <div className="text-right">

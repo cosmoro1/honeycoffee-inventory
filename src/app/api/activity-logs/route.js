@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 
-
 export const dynamic = "force-dynamic"; 
 
 export async function GET() {
@@ -12,13 +11,14 @@ export async function GET() {
           type                                              AS title,
           reference,
           message                                           AS description,
-          DATE_FORMAT(created_at, '%h:%i %p')               AS time,
+          -- 🗓️ FIXED: Formats to complete descriptive text (e.g., 'May 28, 2026 03:25 PM')
+          DATE_FORMAT(created_at, '%b %d, %Y %h:%i %p')     AS time,
           status,
           edi_doc_type,
           raw_payload
-       FROM activity_logs
-       ORDER BY created_at DESC, id DESC
-       LIMIT 50`
+        FROM activity_logs
+        ORDER BY created_at DESC, id DESC
+        LIMIT 50`
     );
     return NextResponse.json(rows);
   } catch (err) {
